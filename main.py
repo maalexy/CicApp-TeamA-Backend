@@ -5,7 +5,7 @@ from flask_jwt_extended import (
     JWTManager, jwt_required, create_access_token,
     get_jwt_identity, get_raw_jwt
 )
-from hashlib import sha256
+import bcrypt
 
 ### Inits, setups
 app = Flask(__name__)
@@ -40,8 +40,7 @@ def register():
     usern = request.form['username']
     passw = request.form['password']
     email = request.form['email']
-    pwhash = sha256()
-    pwhash.update(bytes(passw, 'utf-8'))
+    pwhash = bcrypt.hashpw(passw.encode('utf-8'), bcrypt.gensalt())
     # TODO: use database
     global all_passw
     global all_email
@@ -56,18 +55,16 @@ def register():
 def login():
     usern = request.form['username']
     passw = request.form['password']
-    pwhash = sha256()
-    pwhash.update(bytes(passw, 'utf-8'))
     # TODO: use database
     global all_passw
     global all_email
     if usern not in all_passw.keys():
         return jsonify(msg='User not registered'), 401
-    if all_passw[usern] != pwhash.digest():
+    if bcrypt.checkpw(passw.encode('utf-8'), all_passw[usern]):
         return jsonify(msg='Bad creditentials'), 401
     token = create_access_token(identity=usern)
     return jsonify(msg='Success', token=token), 200
-    
+
 
 @app.route('/.dev/jwtecho')
 @jwt_required
@@ -87,4 +84,4 @@ def logout():
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=os.environ.get('PORT', 5000))
-    
+
