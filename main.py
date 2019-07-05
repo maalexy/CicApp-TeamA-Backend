@@ -5,6 +5,7 @@ from flask_jwt_extended import (
     JWTManager, jwt_required, create_access_token,
     get_jwt_identity, get_raw_jwt
 )
+from flask_sqlalchemy import SQLAlchemy
 import bcrypt
 
 ### Inits, setups
@@ -14,13 +15,18 @@ app.config['JWT_SECRET_KEY'] = os.environ.get('CICAPP_BACKEND_JWT_SECRET',os.get
 app.config['JWT_ACCESS_TOKEN_EXPIRES'] = datetime.timedelta(hours=4)
 app.config['JWT_BLACKLIST_ENABLED'] = True
 app.config['JWT_BLACKLIST_TOKEN_CHECKS'] = ['access']
+
+app.config['SECRET_KEY'] = os.environ.get('CICAPP_BACKEND_SECRET', '123456')
+app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get('DATABASE_URL', 'postgres://localhost/stlsnk')
+app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+
 jwt = JWTManager(app)
 
-# TODO: use database
-all_passw = dict()
-all_email = dict()
-blacklist_jwt = set()
+db = SQLAlchemy(app)
+from models import User
 
+# TODO: use database
+blacklist_jwt = set()
 
 @jwt.token_in_blacklist_loader
 def check_if_token_in_blacklist(decrypted_token):
@@ -39,13 +45,11 @@ def hello_world():
 def register():
     usern = request.form['username']
     passw = request.form['password']
-    email = request.form['email']
-    pwhash = bcrypt.hashpw(passw.encode('utf-8'), bcrypt.gensalt())
-    # TODO: use database
-    global all_passw
-    global all_email
-    all_passw[usern] = pwhash.digest()
-    all_email[usern] = email
+    pwhash = bcrypt.hashpw(passw.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
+    email_ = request.form['email']
+    new_user = User(username=usern, password=pwhash, email=email_)
+    db.session.add(new_user)
+    db.session.commit()
     return jsonify(msg='Success'), 200
 
 
@@ -55,12 +59,12 @@ def register():
 def login():
     usern = request.form['username']
     passw = request.form['password']
-    # TODO: use database
-    global all_passw
-    global all_email
-    if usern not in all_passw.keys():
+    user = User.query.filter_by(username=usern).first()
+    if user == None:
         return jsonify(msg='User not registered'), 401
-    if bcrypt.checkpw(passw.encode('utf-8'), all_passw[usern]):
+    else:
+        app.logger.info(user)
+    if bcrypt.checkpw(passw.encode('utf-8'), user.password.encode('utf-8')):
         return jsonify(msg='Bad creditentials'), 401
     token = create_access_token(identity=usern)
     return jsonify(msg='Success', token=token), 200
@@ -83,5 +87,5 @@ def logout():
 ### Main
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=os.environ.get('PORT', 5000))
+    app.run()
 
