@@ -17,7 +17,7 @@ app.config['JWT_BLACKLIST_ENABLED'] = True
 app.config['JWT_BLACKLIST_TOKEN_CHECKS'] = ['access']
 
 app.config['SECRET_KEY'] = os.environ.get('CICAPP_BACKEND_SECRET', '123456')
-app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get('DATABASE_URL', 'postgres://localhost/stlsnk')
+app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get('DATABASE_URL', 'sqlite:///.local/lite.db')
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
 jwt = JWTManager(app)
@@ -47,6 +47,8 @@ def register():
     passw = request.form['password']
     pwhash = bcrypt.hashpw(passw.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
     email_ = request.form['email']
+    if User.query.filter_by(username=usern).first() != None:
+        return jsonify(msg='User already registered'), 403
     new_user = User(username=usern, password=pwhash, email=email_)
     db.session.add(new_user)
     db.session.commit()
@@ -62,9 +64,7 @@ def login():
     user = User.query.filter_by(username=usern).first()
     if user == None:
         return jsonify(msg='User not registered'), 401
-    else:
-        app.logger.info(user)
-    if bcrypt.checkpw(passw.encode('utf-8'), user.password.encode('utf-8')):
+    if not bcrypt.checkpw(passw.encode('utf-8'), user.password.encode('utf-8')):
         return jsonify(msg='Bad creditentials'), 401
     token = create_access_token(identity=usern)
     return jsonify(msg='Success', token=token), 200
@@ -82,6 +82,15 @@ def jwtecho():
 def logout():
     jti = get_raw_jwt()['jti']
     blacklist_jwt.add(jti)
+    return jsonify(msg='Success'), 200
+
+@app.route('/delete_user', methods=['POST'])
+@jwt_required
+def delete_user():
+    usern = get_jwt_identity()
+    User.query.filter_by(username=usern).delete()
+    db.session.commit()
+    logout()
     return jsonify(msg='Success'), 200
 
 ### Main
